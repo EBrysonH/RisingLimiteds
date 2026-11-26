@@ -49,7 +49,7 @@
 <body>
 <header>
   <h1>About to rise</h1>
-  <p class="sub">Items valued 3,000 to 25,000 whose RAP is within 500 of their value. The closest gaps come first and glow brightest.</p>
+  <p class="sub">Items valued 3,000 to 25,000 whose RAP is within 250 of their value. The closest gaps come first and glow brightest.</p>
   <div class="bar">
     <span id="status"><span class="dot"></span><span id="statusText">Loading…</span></span>
     <span><span id="count">0</span> items</span>
@@ -60,7 +60,7 @@
 
 <script>
 const API = "https://rolimons-feed.brycehall1116.workers.dev/";
-const MIN_VALUE = 3000, MAX_VALUE = 25000, MAX_GAP = 500;
+const MIN_VALUE = 3000, MAX_VALUE = 25000, MAX_GAP = 250;
 const REFRESH_MS = 60000;   // Rolimons data refreshes about once a minute
 const W = 152, H = Math.round(W * 1.1547), GAP = 6;
 
