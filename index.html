@@ -63,6 +63,8 @@
 const API = "https://rolimons-feed.brycehall1116.workers.dev/";
 const MIN_VALUE = 3000, MAX_VALUE = 25000, MAX_GAP = 350;
 const REFRESH_MS = 60000;   // Rolimons data refreshes about once a minute
+const THUMBS = API + "thumbs";
+const thumbs = {};
 const W = 170, H = Math.round(W * 1.1547), GAP = 6;
 
 let items = [];
@@ -99,13 +101,15 @@ function render(){
       a.style.top = (r * rowH) + "px";
       a.style.setProperty("--t", (1 - it.gap / MAX_GAP).toFixed(2));
       a.innerHTML =
-        '<img class="ico" alt="" loading="lazy" referrerpolicy="no-referrer" src="https://www.roblox.com/asset-thumbnail/image?assetId=' + it.id + '&width=150&height=150&format=png">' +
+        '<img class="ico" alt="" referrerpolicy="no-referrer">' +
         '<span class="name"></span>' +
         '<span class="row">RAP <b>' + fmt(it.rap) + '</b></span>' +
         '<span class="row">Value <b>' + fmt(it.value) + '</b></span>' +
         '<span class="gap">+' + fmt(it.gap) + '</span>';
       a.querySelector(".name").textContent = it.name;
-      a.querySelector(".ico").onerror = e => { e.target.style.visibility = "hidden"; };
+      const ico = a.querySelector(".ico");
+      if (thumbs[it.id]) ico.src = thumbs[it.id]; else ico.style.visibility = "hidden";
+      ico.onerror = e => { e.target.style.visibility = "hidden"; };
       a.title = it.name + " — " + fmt(it.gap) + " RAP below value";
       wrap.appendChild(a);
     }
@@ -120,6 +124,17 @@ function setStatus(kind, text){
   document.getElementById("statusText").textContent = text;
 }
 
+async function loadThumbs(){
+  const need = items.map(x => x.id).filter(id => !(id in thumbs));
+  for (let i = 0; i < need.length; i += 100){
+    try{
+      const res = await fetch(THUMBS + "?ids=" + need.slice(i, i + 100).join(","));
+      const j = await res.json();
+      (j.data || []).forEach(d => { if (d.imageUrl) thumbs[d.targetId] = d.imageUrl; });
+    }catch(e){}
+  }
+}
+
 async function load(){
   try{
     const res = await fetch(API, { cache: "no-store" });
@@ -132,6 +147,7 @@ async function load(){
       .map(x => ({ ...x, gap: x.value - x.rap }))
       .filter(x => x.gap > 0 && x.gap <= MAX_GAP)
       .sort((a, b) => a.gap - b.gap);
+    await loadThumbs();
     render();
     setStatus("live", "Live");
     document.getElementById("updated").textContent =
