@@ -19,7 +19,11 @@
     padding:28px 16px 48px;
   }
   header{max-width:1100px;margin:0 auto 24px}
-  h1{font-size:clamp(28px,5vw,44px);font-weight:800;margin:0 0 6px;letter-spacing:-.02em}
+  h1{font-size:clamp(28px,5vw,44px);font-weight:800;margin:0 0 12px;letter-spacing:-.02em}
+  .seg{display:inline-flex;border:1px solid #2b4650;border-radius:99px;padding:3px;margin:0 0 14px}
+  .seg button{font:inherit;font-size:14px;color:var(--muted);background:none;border:0;padding:6px 16px;border-radius:99px;cursor:pointer}
+  .seg button[aria-pressed="true"]{background:var(--hot);color:#06241a;font-weight:700}
+  .seg button:focus-visible,.reset:focus-visible{outline:2px solid var(--hot);outline-offset:2px}
   .sub{color:var(--muted);margin:0 0 14px;max-width:60ch;line-height:1.5}
   .bar{display:flex;flex-wrap:wrap;gap:14px;align-items:center;font-size:14px;color:var(--muted)}
   .dot{width:9px;height:9px;border-radius:50%;background:var(--muted);display:inline-block;margin-right:7px}
@@ -28,6 +32,7 @@
   @keyframes pulse{70%{box-shadow:0 0 0 8px rgba(61,220,151,0)}100%{box-shadow:0 0 0 0 rgba(61,220,151,0)}}
   @media (prefers-reduced-motion:reduce){.live .dot{animation:none}}
   #count{color:var(--text);font-weight:700}
+  .reset{font:inherit;font-size:14px;color:var(--hot);background:none;border:0;padding:0;cursor:pointer;text-decoration:underline;display:none}
   #wrap{position:relative;max-width:1100px;margin:0 auto}
   .hex{
     position:absolute;width:var(--w);height:var(--h);
@@ -39,44 +44,96 @@
     transition:filter .15s, transform .15s;
   }
   .hex:hover,.hex:focus-visible{filter:brightness(1.25);transform:scale(1.04);z-index:2;outline:none}
-  .ico{width:46px;height:46px;object-fit:contain;filter:drop-shadow(0 2px 3px rgba(0,0,0,.4))}
+  .ico{width:44px;height:44px;object-fit:contain;filter:drop-shadow(0 2px 3px rgba(0,0,0,.4))}
   .name{font-size:12px;font-weight:700;line-height:1.15;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
   .row{font-size:12px;color:var(--muted)}
   .row b{color:var(--text);font-weight:700}
+  .meta{font-size:11px;color:var(--hot)}
   .gap{margin-top:3px;font-size:12px;font-weight:800;color:#06241a;background:var(--hot);border-radius:99px;padding:1px 9px}
-  .msg{text-align:center;color:var(--muted);padding:60px 0}
+  .msg{text-align:center;color:var(--muted);padding:60px 0;max-width:46ch;margin:0 auto;line-height:1.5}
 </style>
 </head>
 <body>
 <header>
   <h1>About to rise</h1>
-  <p class="sub">Items valued 3,000 to 25,000 whose RAP is within 350 of their value. The closest gaps come first and glow brightest.</p>
+  <div class="seg" role="group" aria-label="Ranking">
+    <button id="btnNear" aria-pressed="true">Closest to value</button>
+    <button id="btnRise" aria-pressed="false">Rising now</button>
+  </div>
+  <p class="sub" id="sub"></p>
   <div class="bar">
     <span id="status"><span class="dot"></span><span id="statusText">Loading…</span></span>
     <span><span id="count">0</span> items</span>
     <span id="updated"></span>
+    <span id="since"></span>
+    <button class="reset" id="reset">Reset tracking</button>
   </div>
 </header>
 <div id="wrap"></div>
 
 <script>
 const API = "https://rolimons-feed.brycehall1116.workers.dev/";
-const MIN_VALUE = 3000, MAX_VALUE = 25000, MAX_GAP = 350;
-const REFRESH_MS = 60000;   // Rolimons data refreshes about once a minute
 const THUMBS = API + "thumbs";
-const thumbs = {};
-const W = 170, H = Math.round(W * 1.1547), GAP = 6;
+const MIN_VALUE = 3000, MAX_VALUE = 25000, MAX_GAP = 350;
+const REFRESH_MS = 60000;            // Rolimons data refreshes about once a minute
+const BASE_TTL = 6 * 60 * 60 * 1000; // "Rising now" tracking restarts after 6 hours
+const RISING_LIMIT = 60;
+const W = 180, H = Math.round(W * 1.1547), GAP = 6;
 
+const DEMAND = {0:"Terrible",1:"Low",2:"Normal",3:"High",4:"Amazing"};
+const TREND  = {0:"Lowering",1:"Unstable",2:"Stable",3:"Raising",4:"Fluctuating"};
+
+let mode = "near";
+let all = [];
 let items = [];
+let base = null;
+const thumbs = {};
+
 const wrap = document.getElementById("wrap");
 const fmt = n => n.toLocaleString("en-US");
 
+/* ---------- tracking baseline (for "Rising now") ---------- */
+function loadBase(){
+  try{
+    const b = JSON.parse(localStorage.getItem("riseBase") || "null");
+    if (b && b.t && b.rap && Date.now() - b.t < BASE_TTL) return b;
+  }catch(e){}
+  return null;
+}
+function saveBase(){
+  try{ localStorage.setItem("riseBase", JSON.stringify(base)); }catch(e){}
+}
+function newBase(){
+  base = { t: Date.now(), rap: {} };
+  all.forEach(x => { base.rap[x.id] = x.rap; });
+  saveBase();
+}
+
+/* ---------- build the list for the current mode ---------- */
+function buildItems(){
+  if (mode === "near"){
+    items = all
+      .map(x => ({ ...x, score: x.value - x.rap }))
+      .filter(x => x.score > 0 && x.score <= MAX_GAP)
+      .sort((a, b) => a.score - b.score);
+  } else {
+    items = all
+      .map(x => ({ ...x, score: x.rap - (base.rap[x.id] ?? x.rap) }))
+      .filter(x => x.score > 0)
+      .sort((a, b) => b.score - a.score || (a.value - a.rap) - (b.value - b.rap))
+      .slice(0, RISING_LIMIT);
+  }
+}
+
+/* ---------- drawing ---------- */
 function render(){
   wrap.innerHTML = "";
   document.getElementById("count").textContent = items.length;
   if (!items.length){
     wrap.style.height = "auto";
-    wrap.innerHTML = '<p class="msg">No items match right now. This page checks again every minute.</p>';
+    wrap.innerHTML = mode === "near"
+      ? '<p class="msg">No items match right now. This page checks again every minute.</p>'
+      : '<p class="msg">Nothing has gone up yet. Keep this page open and items whose RAP climbs will appear here.</p>';
     return;
   }
   const width = wrap.clientWidth;
@@ -85,8 +142,8 @@ function render(){
   const rowH = H * 0.75 + GAP;
   wrap.style.setProperty("--w", W + "px");
   wrap.style.setProperty("--h", H + "px");
+  const maxScore = Math.max(...items.map(x => x.score));
 
-  // fill each row, alternate rows are shifted half a cell
   let i = 0, r = 0;
   while (i < items.length){
     const offset = r % 2 ? step / 2 : 0;
@@ -99,23 +156,45 @@ function render(){
       a.target = "_blank"; a.rel = "noopener";
       a.style.left = (left0 + offset + c * step) + "px";
       a.style.top = (r * rowH) + "px";
-      a.style.setProperty("--t", (1 - it.gap / MAX_GAP).toFixed(2));
+      const t = mode === "near" ? 1 - it.score / MAX_GAP : it.score / maxScore;
+      a.style.setProperty("--t", t.toFixed(2));
+
+      const d = DEMAND[it.demand], tr = TREND[it.trend];
+      const meta = [d, tr].filter(Boolean).join(", ");
+      const pill = mode === "near" ? "+" + fmt(it.score) : "▲ " + fmt(it.score);
+
       a.innerHTML =
         '<img class="ico" alt="" referrerpolicy="no-referrer">' +
         '<span class="name"></span>' +
         '<span class="row">RAP <b>' + fmt(it.rap) + '</b></span>' +
         '<span class="row">Value <b>' + fmt(it.value) + '</b></span>' +
-        '<span class="gap">+' + fmt(it.gap) + '</span>';
+        (meta ? '<span class="meta">' + meta + '</span>' : '') +
+        '<span class="gap">' + pill + '</span>';
       a.querySelector(".name").textContent = it.name;
       const ico = a.querySelector(".ico");
       if (thumbs[it.id]) ico.src = thumbs[it.id]; else ico.style.visibility = "hidden";
       ico.onerror = e => { e.target.style.visibility = "hidden"; };
-      a.title = it.name + " — " + fmt(it.gap) + " RAP below value";
+      a.title = it.name + (mode === "near"
+        ? " — " + fmt(it.score) + " RAP below value"
+        : " — RAP up " + fmt(it.score) + " since tracking started") +
+        (meta ? " (Demand: " + (d || "?") + ", Trend: " + (tr || "?") + ")" : "");
       wrap.appendChild(a);
     }
     r++;
   }
   wrap.style.height = ((r - 1) * rowH + H) + "px";
+}
+
+function updateChrome(){
+  document.getElementById("btnNear").setAttribute("aria-pressed", mode === "near");
+  document.getElementById("btnRise").setAttribute("aria-pressed", mode === "rise");
+  document.getElementById("sub").textContent = mode === "near"
+    ? "Items valued 3,000 to 25,000 whose RAP is within " + MAX_GAP + " of their value. The closest gaps come first and glow brightest."
+    : "Items valued 3,000 to 25,000, ranked by how much their RAP has climbed since tracking started. The biggest climbers come first, up to " + RISING_LIMIT + ".";
+  const rise = mode === "rise" && base;
+  document.getElementById("reset").style.display = rise ? "inline" : "none";
+  document.getElementById("since").textContent = rise
+    ? "Tracking since " + new Date(base.t).toLocaleTimeString() : "";
 }
 
 function setStatus(kind, text){
@@ -124,6 +203,7 @@ function setStatus(kind, text){
   document.getElementById("statusText").textContent = text;
 }
 
+/* ---------- data loading ---------- */
 async function loadThumbs(){
   const need = items.map(x => x.id).filter(id => !(id in thumbs));
   for (let i = 0; i < need.length; i += 100){
@@ -141,14 +221,18 @@ async function load(){
     if (!res.ok) throw new Error("HTTP " + res.status);
     const data = await res.json();
     // item array: [name, acronym, rap, value, default_value, demand, trend, projected, hyped, rare]
-    items = Object.entries(data.items)
-      .map(([id, a]) => ({ id, name: a[0], rap: a[2], value: a[3] }))
-      .filter(x => x.rap > 0 && x.value >= MIN_VALUE && x.value <= MAX_VALUE)
-      .map(x => ({ ...x, gap: x.value - x.rap }))
-      .filter(x => x.gap > 0 && x.gap <= MAX_GAP)
-      .sort((a, b) => a.gap - b.gap);
+    all = Object.entries(data.items)
+      .map(([id, a]) => ({ id, name: a[0], rap: a[2], value: a[3], demand: a[5], trend: a[6] }))
+      .filter(x => x.rap > 0 && x.value >= MIN_VALUE && x.value <= MAX_VALUE);
+
+    if (!base || Date.now() - base.t > BASE_TTL) newBase();
+    all.forEach(x => { if (!(x.id in base.rap)) base.rap[x.id] = x.rap; });
+    saveBase();
+
+    buildItems();
     await loadThumbs();
     render();
+    updateChrome();
     setStatus("live", "Live");
     document.getElementById("updated").textContent =
       "Updated " + new Date().toLocaleTimeString();
@@ -157,8 +241,28 @@ async function load(){
   }
 }
 
+/* ---------- controls ---------- */
+async function setMode(m){
+  if (m === mode || !all.length) { mode = m; updateChrome(); return; }
+  mode = m;
+  buildItems();
+  await loadThumbs();
+  render();
+  updateChrome();
+}
+document.getElementById("btnNear").onclick = () => setMode("near");
+document.getElementById("btnRise").onclick = () => setMode("rise");
+document.getElementById("reset").onclick = async () => {
+  newBase();
+  buildItems();
+  render();
+  updateChrome();
+};
+
 let t;
 new ResizeObserver(() => { clearTimeout(t); t = setTimeout(render, 120); }).observe(wrap);
+base = loadBase();
+updateChrome();
 load();
 setInterval(load, REFRESH_MS);
 </script>
