@@ -39,6 +39,7 @@
     transition:filter .15s, transform .15s;
   }
   .hex:hover,.hex:focus-visible{filter:brightness(1.25);transform:scale(1.04);z-index:2;outline:none}
+  .ico{width:46px;height:46px;object-fit:contain;filter:drop-shadow(0 2px 3px rgba(0,0,0,.4))}
   .name{font-size:12px;font-weight:700;line-height:1.15;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
   .row{font-size:12px;color:var(--muted)}
   .row b{color:var(--text);font-weight:700}
@@ -62,7 +63,7 @@
 const API = "https://rolimons-feed.brycehall1116.workers.dev/";
 const MIN_VALUE = 3000, MAX_VALUE = 25000, MAX_GAP = 350;
 const REFRESH_MS = 60000;   // Rolimons data refreshes about once a minute
-const W = 152, H = Math.round(W * 1.1547), GAP = 6;
+const W = 170, H = Math.round(W * 1.1547), GAP = 6;
 
 let items = [];
 const wrap = document.getElementById("wrap");
@@ -82,16 +83,13 @@ function render(){
   const rowH = H * 0.75 + GAP;
   wrap.style.setProperty("--w", W + "px");
   wrap.style.setProperty("--h", H + "px");
-  const rowsUsed = Math.ceil(items.length / perRow);
 
   // fill each row, alternate rows are shifted half a cell
   let i = 0, r = 0;
   while (i < items.length){
     const offset = r % 2 ? step / 2 : 0;
-    const rowCount = perRow;
-    const rowWidth = rowCount * step - GAP + (r % 2 ? step / 2 : 0);
     const left0 = Math.max(0, (width - (perRow * step - GAP + step / 2)) / 2);
-    for (let c = 0; c < rowCount && i < items.length; c++, i++){
+    for (let c = 0; c < perRow && i < items.length; c++, i++){
       const it = items[i];
       const a = document.createElement("a");
       a.className = "hex";
@@ -101,11 +99,13 @@ function render(){
       a.style.top = (r * rowH) + "px";
       a.style.setProperty("--t", (1 - it.gap / MAX_GAP).toFixed(2));
       a.innerHTML =
+        '<img class="ico" alt="" loading="lazy" referrerpolicy="no-referrer" src="https://www.roblox.com/asset-thumbnail/image?assetId=' + it.id + '&width=150&height=150&format=png">' +
         '<span class="name"></span>' +
         '<span class="row">RAP <b>' + fmt(it.rap) + '</b></span>' +
         '<span class="row">Value <b>' + fmt(it.value) + '</b></span>' +
         '<span class="gap">+' + fmt(it.gap) + '</span>';
       a.querySelector(".name").textContent = it.name;
+      a.querySelector(".ico").onerror = e => { e.target.style.visibility = "hidden"; };
       a.title = it.name + " — " + fmt(it.gap) + " RAP below value";
       wrap.appendChild(a);
     }
